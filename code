@@ -1,0 +1,170 @@
+/**
+Author: Yeva Kalish
+Date: 4/5/2024
+Program: Project 3.C Keywords
+Readme: This program is a feedback-style number guessing game.
+The RGB will be blue when it's ready for input. The number
+is 4 digits long, and you can press the bottom left key (*) to
+delete a digit, and the bottom middle right key (#) to submit
+your answer. 
+When you submit, the program will check the correctness and give
+you results on the bottom row. If it shows the number, it's wrong,
+if it shows an arrow (~), that means your number is one off, and if
+it shows an exclamation point, that number is correct.
+If your answer is off, the LED will flash red, and if your answer is correct,
+the LED will become green and you win.
+
+NOTE: The keypad must be held with the wires facing left to work correctly!
+**/
+
+const int redLED = 9, greenLED = 10, blueLED = 11;
+boolean allDone = false;
+
+#include <Keypad.h>
+#include <LiquidCrystal_I2C.h>
+//LCD Setup
+LiquidCrystal_I2C lcd(0x27, 16, 2);
+//KEYPAD Setup
+const byte ROWS = 4, COLS = 3;
+char hexaKeys[ROWS][COLS] = {
+  { '1', '2', '3' },
+  { '4', '5', '6' },
+  { '7', '8', '9' },
+  { '*', '0', '#' }
+};
+byte rowPins[ROWS] = { 13, 12, 3, 8 };
+byte colPins[COLS] = { 4, 5, 6 };
+Keypad numPad = Keypad(makeKeymap(hexaKeys), rowPins, colPins, ROWS, COLS);
+
+void setup() {
+  Serial.begin(9600);
+  lcd.init();
+  lcd.backlight();
+  pinMode(redLED, OUTPUT);
+  pinMode(greenLED, OUTPUT);
+  pinMode(blueLED, OUTPUT);
+
+  randomSeed(analogRead(1)); //random seed to help rng
+  createRandomNumber();  //randomized answer array
+
+  lcd.setCursor(0, 0);  //initially print blanks
+  lcd.print("____");
+}
+
+
+int answer[4];
+void createRandomNumber() {
+  for (int i = 0; i < 4; i++) {
+    int ranint = (int)(random(0, 10));
+    answer[i] = ranint;
+  }
+}
+
+void setRGB(int redBright, int greenBright, int blueBright) {
+  analogWrite(redLED, redBright);
+  analogWrite(greenLED, greenBright);
+  analogWrite(blueLED, blueBright);
+}
+
+String userInput = "";
+int position = 0;
+boolean first = true;
+char press;
+
+void takeInput() {
+  if (first) position = 0; //reset position on each new try
+  first = false; 
+  setRGB(0, 0, 40);
+  lcd.setCursor(0, 0);
+
+  press = numPad.getKey();
+  if (press) {
+    switch (press) {
+      case '#':  //submit 
+        checkAnswer();
+        first = true;
+      case '*':  //delete
+        if (position == 0) {  //first char
+          userInput = "";
+          break;
+        } else {
+          position--;
+          userInput = userInput.substring(0, userInput.length() - 1);
+        }
+        break;
+      default:
+        if (position >= 4) { //for overflow
+          break;
+        } else {
+          userInput += press;
+          position++;
+          break;
+        }
+    }
+  }
+  if (!allDone) { //show numbers
+    for (int i = 0; i < 4; i++) { 
+      if (i < userInput.length()) {
+        lcd.print(userInput.substring(i, i + 1));
+      } else {
+        lcd.print("_");
+      }
+    }
+  }
+}
+
+void checkAnswer() {
+  int numCorrect = 0;
+  lcd.setCursor(0, 1);  //bottom row
+
+  //TRAVERSE EACH NUMBER
+  for (int i = 0; i < 4; i++) {
+    int currentNum = userInput.substring(i, i + 1).toInt();  //convert curent index of string to Int to individually compare
+    if (currentNum == answer[i]) {                           //IF CORRECT
+      lcd.print("!");
+      numCorrect++;
+    } else if (currentNum == answer[i] + 1 || currentNum == answer[i] - 1) {  //IF ONE OFF
+      lcd.print("~");
+    } else {  //ELSE
+      lcd.print(currentNum);
+    }
+  }
+
+  userInput = ""; //reset userInput
+  if (numCorrect == 4) {  //IF ALL RIGHT
+    allDone = winScreen();
+  } else {  //IF NOT RIGHT
+    //flash rgb
+    for (int i = 0; i < 3; i++) {
+      setRGB(0, 0, 0);
+      delay(150);
+      setRGB(40, 0, 0);
+      delay(150);
+    }
+    lcd.setCursor(0, 0);
+    setRGB(0, 0, 40);
+
+    allDone = false;
+  }
+  delay(200);
+}
+
+boolean winScreen() {
+  lcd.setCursor(0, 0);
+  lcd.clear();
+  lcd.print("You Win!!! GG");
+  setRGB(0, 40, 0);
+  return true;
+}
+
+
+void loop() {
+  //print answer on serial monitor (dont open)
+  for (int i = 0; i < 4; i++) {
+    Serial.print(answer[i]);
+  }
+  Serial.println("");
+  if (!allDone) {
+    takeInput();
+  }
+}
